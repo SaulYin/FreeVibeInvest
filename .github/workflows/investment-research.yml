@@ -1,0 +1,59 @@
+name: Investment Research Pipeline
+
+on:
+  # Weekdays at 10 AM ET (15:00 UTC). GitHub Actions cron is always UTC.
+  schedule:
+    - cron: '0 15 * * 1-5'
+
+  # Manual trigger with optional overrides
+  workflow_dispatch:
+    inputs:
+      analysis_mode:
+        description: 'Analysis mode'
+        required: false
+        default: 'market_pulse'
+        type: choice
+        options:
+          - market_pulse
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        run: python main.py
+        env:
+          # ── Required secrets (set in repo Settings → Secrets and variables → Actions) ──
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          FINNHUB_API_KEY:    ${{ secrets.FINNHUB_API_KEY }}
+
+          # ── Notification channels (at least one required) ──
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+
+          # ── Optional runtime overrides ──
+          LOG_LEVEL: INFO
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-logs-${{ github.run_id }}
+          path: |
+            *.log
+            metrics/
+          retention-days: 7

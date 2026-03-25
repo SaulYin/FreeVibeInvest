@@ -1,0 +1,70 @@
+# Pipeline settings — safe to commit; version on GitHub.
+# Secrets via environment — see .env.example
+
+# market_pulse: Finnhub market news + optional RSS → LLM.
+# Enable movers/benchmark quotes only if your Finnhub plan can handle the extra quote traffic.
+analysis_mode: market_pulse
+
+market_pulse:
+  # Finnhub market news category for the macro tape.
+  market_news_category: general
+  macro_news_max_items: 18
+
+  # Movers require many Finnhub /quote calls across the bundled universe.
+  # Leave disabled to analyze directly from market news + RSS only.
+  movers:
+    enabled: false
+    gainers: 18
+    losers: 18
+    most_actives: 15
+    max_symbols_for_news: 32
+
+  # Optional: always append these tickers to the mover list (before cap).
+  extra_news_tickers: []
+
+  # Optional benchmark ETF proxy quotes for extra tape context.
+  # Use [] to skip quote calls entirely.
+  benchmark_symbols: []
+
+  finnhub_news_max_per_ticker: 6
+  max_headlines_for_llm: 80
+  merge_unfiltered_rss: true
+  finnhub_request_pause_sec: 0.05
+
+  # Yahoo Finance per-ticker RSS headlines (no API key required).
+  yahoo_per_ticker_enabled: true
+  yahoo_max_per_ticker: 8
+
+live_news:
+  enabled: true
+  rss_max_entries_per_feed: 24
+  finnhub_for_matched_symbols: true
+  max_finnhub_symbols: 40
+  # Broad financial RSS feeds — headlines are ticker-matched before attaching to symbols.
+  # All feeds fail silently, so adding extras has no downside.
+  rss_feeds:
+    - https://www.marketwatch.com/rss/topstories
+    - https://www.cnbc.com/id/100003114/device/rss/rss.html
+    - https://finance.yahoo.com/news/rssindex
+    - https://feeds.a.dj.com/rss/RSSMarketsMain.xml
+    - https://rss.nytimes.com/services/xml/rss/nyt/Business.xml
+
+llm_model: openrouter/free
+llm_max_tokens: 1000
+llm_market_pulse_max_tokens: 5000
+
+request_timeout: 15
+rss_request_timeout: 40
+retries: 4
+proxy_list: []
+
+schedule_time: "10:00"
+schedule_timezone: US/Eastern
+
+log_level: INFO
+enable_discord: true
+enable_telegram: false
+
+# per_symbol only: set universe or portfolio
+# universe: us_large_cap_nasdaq_dow
+# portfolio: []
