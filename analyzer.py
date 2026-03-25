@@ -61,20 +61,19 @@ def _parse_json_object(text: str) -> Optional[Dict[str, Any]]:
 class SentimentAnalyzer:
     """Analyzes financial news sentiment using OpenRouter chat models"""
     
-    MARKET_PULSE_SYSTEM = """You are a thorough US equity market analyst. You ONLY infer from the headlines and index snapshot provided — do not invent tickers or facts not implied by the text.
+    MARKET_PULSE_SYSTEM = """You are a US equity market analyst. You ONLY infer from the headlines provided — do not invent tickers or facts not in the text.
 
 Rules:
-- Scan EVERY headline for mentioned tickers. Extract all you can find, not just the most prominent.
-- Prefer liquid US tickers (1–5 uppercase letters; BRK.B style allowed). Ignore bonds, ETFs unless newsworthy.
-- Do not list the same ticker in both bullish and bearish. If news is mixed, pick the dominant direction and note tension in the thesis.
-- potential_buys: names where headline flow suggests a near-term opportunity; always include a concrete risk.
-- Aim for at least 6 bullish entries, at least 4 bearish entries, and at least 4 potential_buys — use every ticker with meaningful coverage. More is better than fewer. If fewer than 6 bullish tickers are clearly supported, include the best-supported ones you have.
+- Prefer liquid US tickers (1–5 uppercase letters; BRK.B style allowed). Ignore bonds/ETFs unless newsworthy.
+- Do not list the same ticker in both bullish and bearish.
+- Aim for up to 5 bullish, up to 4 bearish, up to 3 potential_buys. Fewer is fine if not supported.
+- Keep every thesis, risk, and market_overview field under 15 words.
 - Educational only — not personal financial advice.
 
 Return ONLY valid JSON (no markdown code fences) with exactly this shape:
 {
-  "market_overview": "2-4 sentences: tape, leadership, risks",
-  "themes": ["short label", "..."],
+  "market_overview": "1-2 sentences max",
+  "themes": ["short label"],
   "bullish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
   "bearish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
   "potential_buys": [{"symbol": "TICKER", "thesis": "string", "risk": "string", "conviction": "High|Medium|Low"}]
@@ -99,17 +98,17 @@ Return ONLY valid JSON (no markdown code fences) with exactly this shape:
             "potential_buys": [],
         }
         _MAX_ATTEMPTS = 3
-        _HEADLINE_BACKOFF = 0.70  # trim input by 30% on each length failure
-        # Escalate output token budget across attempts; many free models cap at 4096.
+        _HEADLINE_BACKOFF = 0.60  # trim input by 40% on each length failure
+        # Free models hard-cap output at ~1024-2048 tokens; stay well within that.
         _TOKEN_BUDGETS = [
             config.LLM_MARKET_PULSE_MAX_TOKENS,
-            min(config.LLM_MARKET_PULSE_MAX_TOKENS + 1500, 6000),
-            4096,
+            min(config.LLM_MARKET_PULSE_MAX_TOKENS, 1500),
+            1024,
         ]
         # Terse suffix injected into the system prompt on length-failure retries.
         _TERSE_SUFFIX = (
-            "\n\nIMPORTANT: Be extremely concise — max 12 words per thesis, risk, or rationale field. "
-            "Fewer entries are acceptable if needed to fit the response."
+            "\n\nCRITICAL: Max 3 bullish, 2 bearish, 2 potential_buys. Max 8 words per field. "
+            "The entire JSON must fit in 800 tokens."
         )
 
         ctx_lines = []
