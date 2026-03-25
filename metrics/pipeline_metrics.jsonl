@@ -15,3 +15,6 @@
 {"timestamp": "2026-03-24T19:07:07.101797", "duration_seconds": 4.39, "articles_scraped": 80, "stocks_analyzed": 7, "notifications_sent": true, "errors": [], "status": "healthy"}
 {"timestamp": "2026-03-24T19:32:04.187229", "duration_seconds": 30.09, "articles_scraped": 80, "stocks_analyzed": 9, "notifications_sent": true, "errors": [], "status": "healthy"}
 {"timestamp": "2026-03-24T19:44:03.777931", "duration_seconds": 0.0, "articles_scraped": 0, "stocks_analyzed": 0, "notifications_sent": false, "errors": ["Configuration error: OPENROUTER_API_KEY must be set"], "status": "failed"}
+{"timestamp": "2026-03-24T19:58:31.291273", "duration_seconds": 140.43, "articles_scraped": 40, "stocks_analyzed": 0, "notifications_sent": false, "errors": ["Analysis failed: 429 Client Error: Too Many Requests for url: https://openrouter.ai/api/v1/chat/completions"], "status": "failed"}
+{"timestamp": "2026-03-24T20:01:59.156766", "duration_seconds": 36.59, "articles_scraped": 40, "stocks_analyzed": 4, "notifications_sent": true, "errors": [], "status": "healthy"}
+{"timestamp": "2026-03-24T20:03:21.377242", "duration_seconds": 57.64, "articles_scraped": 40, "stocks_analyzed": 0, "notifications_sent": false, "errors": ["Analysis failed: max_retries"], "status": "failed"}

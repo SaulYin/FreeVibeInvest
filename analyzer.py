@@ -5,6 +5,7 @@ Uses OpenRouter API to analyze news sentiment and extract market catalysts
 import json
 import logging
 import re
+import time
 import requests
 from json import JSONDecoder
 from typing import Any, Dict, List, Optional
@@ -66,13 +67,13 @@ class SentimentAnalyzer:
 Rules:
 - Prefer liquid US tickers (1–5 uppercase letters; BRK.B style allowed). Ignore bonds/ETFs unless newsworthy.
 - Do not list the same ticker in both bullish and bearish.
-- Aim for up to 5 bullish, up to 4 bearish, up to 3 potential_buys. Fewer is fine if not supported.
-- Keep every thesis, risk, and market_overview field under 15 words.
+- Aim for up to 8 bullish, up to 6 bearish, up to 5 potential_buys — include every ticker with clear coverage.
+- Keep each thesis and risk under 20 words. market_overview: 2-3 sentences.
 - Educational only — not personal financial advice.
 
 Return ONLY valid JSON (no markdown code fences) with exactly this shape:
 {
-  "market_overview": "1-2 sentences max",
+  "market_overview": "2-3 sentences",
   "themes": ["short label"],
   "bullish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
   "bearish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
@@ -210,6 +211,20 @@ Return ONLY valid JSON (no markdown code fences) with exactly this shape:
                 )
                 return parsed
 
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else 0
+                if status == 429:
+                    retry_after = int(e.response.headers.get("Retry-After", 60))
+                    wait = min(retry_after, 120)
+                    logger.warning(
+                        "Market pulse attempt %d: 429 rate-limited — waiting %ds before retry",
+                        attempt, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    logger.error("Market pulse LLM attempt %d HTTP error: %s", attempt, e)
+                if attempt == _MAX_ATTEMPTS:
+                    return {**_EMPTY, "market_overview": str(e), "error": str(e)}
             except Exception as e:
                 logger.error("Market pulse LLM attempt %d error: %s", attempt, e)
                 if attempt == _MAX_ATTEMPTS:
