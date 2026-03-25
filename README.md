@@ -1,5 +1,7 @@
 # FreeVibeInvest - It is probably fine
 
+> ⚠️ **Disclaimer:** This is a hobby project built for fun. The "analysis" here is a free LLM reading RSS feeds and vibing. Do not — under any circumstances — use this to make real financial decisions. If you buy or sell stocks based on what a free AI model scraped from the internet at 10 AM, that's on you. Past vibes do not predict future vibes. Not financial advice. Not even close.
+
 A pipeline that pulls financial headlines from Finnhub (market news + company news), Yahoo Finance RSS, MarketWatch, CNBC, Wall Street Journal, and NY Times Business,
 runs them through an LLM via OpenRouter, and delivers a daily market briefing to Discord or Telegram.
 
