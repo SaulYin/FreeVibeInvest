@@ -70,6 +70,14 @@ def run_pipeline():
             "market_overview": pulse_report.get("market_overview", ""),
             "themes": pulse_report.get("themes") or [],
         }
+        if pulse_report.get("error"):
+            logger.error("✗ Analysis failed (%s) — skipping notification", pulse_report["error"])
+            phase2_duration = time.time() - start_phase2
+            performance.record_timing("ai_analysis", phase2_duration)
+            monitor.log_error(f"Analysis failed: {pulse_report['error']}")
+            monitor.end_execution(articles_scraped, 0, False)
+            return 1
+
         analysis_results = analyzer.market_pulse_report_to_stock_analysis(pulse_report)
         if pulse_meta.get("market_overview"):
             logger.info("\n%s", pulse_meta["market_overview"])
