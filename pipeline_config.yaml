@@ -49,7 +49,7 @@ live_news:
     - https://feeds.a.dj.com/rss/RSSMarketsMain.xml
     - https://rss.nytimes.com/services/xml/rss/nyt/Business.xml
 
-llm_model: nvidia/nemotron-3-nano-30b-a3b:free
+llm_model: openrouter/free
 llm_max_tokens: 1000
 llm_market_pulse_max_tokens: 1500
 
