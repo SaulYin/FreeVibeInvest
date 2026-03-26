@@ -162,6 +162,10 @@ Return ONLY valid JSON (no markdown). Max 3 bullish, 2 bearish, 2 potential_buys
                     {"role": "system", "content": system_content},
                     {"role": "user", "content": user_msg},
                 ],
+                # Cap reasoning tokens for thinking models (e.g. stepfun)
+                # so they don't consume the entire max_tokens budget on
+                # chain-of-thought, leaving nothing for the JSON response.
+                "reasoning": {"effort": "low"},
             }
 
             try:
