@@ -137,6 +137,14 @@ llm_model: google/gemini-2.5-flash-lite   # free, fast
 llm_model: anthropic/claude-3.5-haiku     # paid, more reliable
 ```
 
+Or set it via a **GitHub Actions variable** (no code change needed):
+
+1. Go to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab
+2. Click **New repository variable**
+3. Name: `LLM_MODEL`, Value: your model string (e.g. `google/gemini-2.0-flash-exp:free`)
+
+The variable overrides `pipeline_config.yaml` at runtime. If unset, defaults to `openrouter/free`.
+
 ### Add or remove RSS feeds
 
 Edit the `rss_feeds` list under `live_news` in `pipeline_config.yaml`.

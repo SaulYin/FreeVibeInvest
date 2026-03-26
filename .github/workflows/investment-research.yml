@@ -48,6 +48,7 @@ jobs:
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
 
           # ── Optional runtime overrides ──
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'openrouter/free' }}
           LOG_LEVEL: INFO
 
       - name: Upload logs on failure

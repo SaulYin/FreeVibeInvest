@@ -233,6 +233,8 @@ class Config:
         self.TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID)
         self.NEWS_API_KEY = os.getenv("NEWS_API_KEY", self.NEWS_API_KEY)
 
+        if os.getenv("LLM_MODEL"):
+            self.LLM_MODEL = os.getenv("LLM_MODEL", self.LLM_MODEL).strip()
         if os.getenv("LLM_MAX_TOKENS"):
             self.LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", str(self.LLM_MAX_TOKENS)))
         if os.getenv("REQUEST_TIMEOUT"):
