@@ -27,7 +27,7 @@ market_pulse:
   benchmark_symbols: []
 
   finnhub_news_max_per_ticker: 6
-  max_headlines_for_llm: 40
+  max_headlines_for_llm: 28
   merge_unfiltered_rss: true
   finnhub_request_pause_sec: 0.05
 
@@ -51,7 +51,7 @@ live_news:
 
 llm_model: openrouter/free
 llm_max_tokens: 1000
-llm_market_pulse_max_tokens: 5000
+llm_market_pulse_max_tokens: 2500
 
 request_timeout: 15
 rss_request_timeout: 40

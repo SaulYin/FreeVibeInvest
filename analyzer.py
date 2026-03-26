@@ -67,14 +67,24 @@ class SentimentAnalyzer:
 Rules:
 - Prefer liquid US tickers (1–5 uppercase letters; BRK.B style allowed). Ignore bonds/ETFs unless newsworthy.
 - Do not list the same ticker in both bullish and bearish.
-- Aim for up to 8 bullish, up to 6 bearish, up to 5 potential_buys — include every ticker with clear coverage.
-- Keep each thesis and risk under 20 words. market_overview: 2-3 sentences.
+- Aim for up to 5 bullish, up to 4 bearish, up to 3 potential_buys.
+- Keep each thesis and risk under 12 words. market_overview: 1-2 sentences.
 - Educational only — not personal financial advice.
 
 Return ONLY valid JSON (no markdown code fences) with exactly this shape:
 {
-  "market_overview": "2-3 sentences",
+  "market_overview": "1-2 sentences",
   "themes": ["short label"],
+  "bullish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
+  "bearish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
+  "potential_buys": [{"symbol": "TICKER", "thesis": "string", "risk": "string", "conviction": "High|Medium|Low"}]
+}"""
+
+    MARKET_PULSE_TERSE = """You are a US equity market analyst. Only use facts from the headlines below.
+Return ONLY valid JSON (no markdown). Max 3 bullish, 2 bearish, 2 potential_buys. Max 8 words per field.
+{
+  "market_overview": "1 sentence",
+  "themes": ["label"],
   "bullish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
   "bearish": [{"symbol": "TICKER", "thesis": "string", "confidence": 0-100}],
   "potential_buys": [{"symbol": "TICKER", "thesis": "string", "risk": "string", "conviction": "High|Medium|Low"}]
@@ -99,18 +109,11 @@ Return ONLY valid JSON (no markdown code fences) with exactly this shape:
             "potential_buys": [],
         }
         _MAX_ATTEMPTS = 3
-        _HEADLINE_BACKOFF = 0.60  # trim input by 40% on each length failure
-        # Free models hard-cap output at ~1024-2048 tokens; stay well within that.
-        _TOKEN_BUDGETS = [
-            config.LLM_MARKET_PULSE_MAX_TOKENS,
-            min(config.LLM_MARKET_PULSE_MAX_TOKENS, 1500),
-            1024,
-        ]
-        # Terse suffix injected into the system prompt on length-failure retries.
-        _TERSE_SUFFIX = (
-            "\n\nCRITICAL: Max 3 bullish, 2 bearish, 2 potential_buys. Max 8 words per field. "
-            "The entire JSON must fit in 800 tokens."
-        )
+        _HEADLINE_BACKOFF = 0.50  # trim input by 50% on each length failure
+        # Keep max_tokens at the configured value — never shrink it on retry.
+        # Shrinking max_tokens is counterproductive: the model already can't fit
+        # its reply, so requesting fewer tokens makes truncation worse.
+        _MAX_TOKENS = config.LLM_MARKET_PULSE_MAX_TOKENS
 
         ctx_lines = []
         if index_context and index_context.get("stocks"):
@@ -132,17 +135,19 @@ Return ONLY valid JSON (no markdown code fences) with exactly this shape:
         length_failures = 0  # track how many times we hit the output token limit
 
         for attempt in range(1, _MAX_ATTEMPTS + 1):
+            terse = length_failures > 0
+            system_content = self.MARKET_PULSE_TERSE if terse else self.MARKET_PULSE_SYSTEM
+            max_tokens = _MAX_TOKENS
+
             lines = []
+            title_limit = 140 if terse else 200
+            summary_limit = 80 if terse else 140
             for i, a in enumerate(articles[:cap], 1):
-                title = (a.get("title") or "")[:220]
-                summary = (a.get("summary") or "")[:180]
+                title = (a.get("title") or "")[:title_limit]
+                summary = (a.get("summary") or "")[:summary_limit]
                 src = a.get("source") or "?"
                 lines.append(f"{i}. [{src}] {title}\n   {summary}")
             blob = "\n".join(lines)
-
-            terse = length_failures > 0
-            system_content = self.MARKET_PULSE_SYSTEM + (_TERSE_SUFFIX if terse else "")
-            max_tokens = _TOKEN_BUDGETS[min(attempt - 1, len(_TOKEN_BUDGETS) - 1)]
 
             user_msg = (
                 "Here are today's market headlines (Finnhub market/company news + Yahoo Finance + RSS feeds), deduped.\n"
