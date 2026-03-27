@@ -6,7 +6,8 @@ import logging
 import aiohttp
 import asyncio
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -260,7 +261,8 @@ class NotificationManager:
         Format analysis results for Telegram with buy recommendations
         """
         message = f"<b>📊 Daily Market Analysis</b>\n"
-        message += f"<i>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>\n"
+        now_et = datetime.now(ZoneInfo("US/Eastern"))
+        message += f"<i>{now_et.strftime('%Y-%m-%d %H:%M:%S %Z')}</i>\n"
         message += "=" * 40 + "\n\n"
         if pulse_meta and pulse_meta.get("market_overview"):
             message += f"<b>Overview</b>\n{pulse_meta['market_overview'][:2800]}\n\n"
@@ -372,7 +374,8 @@ class MessageFormatter:
         ]
 
         briefing = "📈 **Daily Investment Brief**\n"
-        briefing += f"📅 {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')} PST\n\n"
+        now_et = datetime.now(ZoneInfo("US/Eastern"))
+        briefing += f"📅 {now_et.strftime('%A, %B %d, %Y at %I:%M %p %Z')}\n\n"
 
         if pulse_meta and pulse_meta.get("market_overview"):
             briefing += f"**Tape**\n{pulse_meta['market_overview'][:900]}\n\n"

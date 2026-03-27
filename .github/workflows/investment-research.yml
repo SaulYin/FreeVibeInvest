@@ -1,11 +1,16 @@
 name: Investment Research Pipeline
 
 on:
-  # Weekdays at 10 AM, 12 PM, and 4:30 PM ET (15:00, 17:00, 21:30 UTC). GitHub Actions cron is always UTC.
+  # US market hours: 9:30 AM – 4:00 PM ET
+  # Runs: 10:00 AM ET (30 min after open), 12:00 PM ET, 4:00 PM ET (market close)
+  # GitHub Actions cron is always UTC.
+  # EDT (Mar–Nov, UTC-4): 14:00, 16:00, 20:00 UTC
+  # EST (Nov–Mar, UTC-5): 15:00, 17:00, 21:00 UTC
+  # Using EDT offsets since most US trading days fall within DST.
   schedule:
-    - cron: '0 15 * * 1-5'
-    - cron: '0 17 * * 1-5'
-    - cron: '30 21 * * 1-5'
+    - cron: '0 14 * * 1-5'
+    - cron: '0 16 * * 1-5'
+    - cron: '0 20 * * 1-5'
 
   # Manual trigger with optional overrides
   workflow_dispatch:
