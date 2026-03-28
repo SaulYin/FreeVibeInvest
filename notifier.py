@@ -243,22 +243,8 @@ class NotificationManager:
                     "value": data.get('buy_rationale', 'N/A'),
                     "inline": False
                 })
-            
-            # Add top catalysts
-            catalysts = data.get('catalysts', [])
-            if catalysts:
-                catalyst_list = ""
-                for i, cat in enumerate(catalysts[:2], 1):
-                    catalyst_list += f"{i}. {cat.get('catalyst', 'N/A')} ({cat.get('impact', 'N/A')})\n"
-                
-                embed['fields'].append({
-                    "name": "Top Catalysts",
-                    "value": catalyst_list,
-                    "inline": False
-                })
-            
-            # Add summary
-            if data.get('summary'):
+            elif data.get('summary'):
+                # Only show thesis when there's no buy rationale (which already includes it)
                 embed['fields'].append({
                     "name": "Investment Thesis",
                     "value": data['summary'],
@@ -358,17 +344,12 @@ class NotificationManager:
                     price_str += f" ({pct_change}%)"
             message += f"\n{emoji} <b>{symbol}</b>{price_str} - {sentiment}\n"
             
-            if data.get('summary'):
+            if data.get('buy_rationale'):
+                message += f"   {data['buy_rationale']}\n"
+                if data.get('buy_score'):
+                    message += f"   💡 Buy Score: {data['buy_score']}%\n"
+            elif data.get('summary'):
                 message += f"   {data['summary']}\n"
-            
-            # Buy score if available
-            if data.get('buy_score'):
-                message += f"   💡 Buy Score: {data['buy_score']}%\n"
-            
-            # Top catalyst
-            if data.get('catalysts'):
-                top = data['catalysts'][0]
-                message += f"   🔥 {top.get('catalyst', 'N/A')}\n"
         
         return message
     
