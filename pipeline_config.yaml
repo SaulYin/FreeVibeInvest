@@ -27,7 +27,7 @@ market_pulse:
   benchmark_symbols: []
 
   finnhub_news_max_per_ticker: 6
-  max_headlines_for_llm: 28
+  max_headlines_for_llm: 60
   merge_unfiltered_rss: true
   finnhub_request_pause_sec: 0.05
 
