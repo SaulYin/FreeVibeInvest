@@ -14,8 +14,15 @@ from config import config
 logger = logging.getLogger(__name__)
 
 
-def _llm_http_timeout() -> int:
-    return max(120, int(config.REQUEST_TIMEOUT))
+def _llm_http_timeout():
+    """Return (connect_timeout, read_timeout) tuple for LLM requests.
+
+    A short connect timeout catches unreachable endpoints fast, while a
+    generous read timeout accommodates slow model inference.
+    """
+    read = max(120, int(config.LLM_REQUEST_TIMEOUT))
+    connect = min(15, read)
+    return (connect, read)
 
 
 def _strip_code_fences(text: str) -> str:
@@ -220,6 +227,20 @@ Return ONLY valid JSON (no markdown). Max 3 bullish, 2 bearish, 2 potential_buys
                 )
                 return parsed
 
+            except requests.exceptions.Timeout as e:
+                logger.warning(
+                    "Market pulse attempt %d: request timed out after %s — retrying",
+                    attempt, _llm_http_timeout(),
+                )
+                if attempt == _MAX_ATTEMPTS:
+                    return {**_EMPTY, "market_overview": "LLM request timed out", "error": "timeout"}
+            except requests.exceptions.ConnectionError as e:
+                logger.warning(
+                    "Market pulse attempt %d: connection error — %s",
+                    attempt, e,
+                )
+                if attempt == _MAX_ATTEMPTS:
+                    return {**_EMPTY, "market_overview": str(e), "error": str(e)}
             except requests.exceptions.HTTPError as e:
                 status = e.response.status_code if e.response is not None else 0
                 if status == 429:

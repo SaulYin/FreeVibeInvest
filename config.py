@@ -98,6 +98,7 @@ class Config:
     NEWS_API_KEY: str = ""
     LLM_MODEL: str = "openrouter/free"
     LLM_MAX_TOKENS: int = 1000
+    LLM_REQUEST_TIMEOUT: int = 180
     PROXY_LIST: List[str] = field(default_factory=list)
     REQUEST_TIMEOUT: int = 10
     RSS_REQUEST_TIMEOUT: int = 35
@@ -214,6 +215,7 @@ class Config:
         self.LLM_MODEL = str(y.get("llm_model", self.LLM_MODEL))
         self.LLM_MAX_TOKENS = int(y.get("llm_max_tokens", self.LLM_MAX_TOKENS))
         self.REQUEST_TIMEOUT = int(y.get("request_timeout", self.REQUEST_TIMEOUT))
+        self.LLM_REQUEST_TIMEOUT = int(y.get("llm_request_timeout", self.LLM_REQUEST_TIMEOUT))
         self.RETRIES = int(y.get("retries", self.RETRIES))
         proxies = y.get("proxy_list")
         if isinstance(proxies, list):
@@ -239,6 +241,8 @@ class Config:
             self.LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", str(self.LLM_MAX_TOKENS)))
         if os.getenv("REQUEST_TIMEOUT"):
             self.REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", str(self.REQUEST_TIMEOUT)))
+        if os.getenv("LLM_REQUEST_TIMEOUT"):
+            self.LLM_REQUEST_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", str(self.LLM_REQUEST_TIMEOUT)))
         if os.getenv("RETRIES"):
             self.RETRIES = int(os.getenv("RETRIES", str(self.RETRIES)))
         if os.getenv("LOG_LEVEL"):
