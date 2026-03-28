@@ -79,6 +79,18 @@ def run_pipeline():
             return 1
 
         analysis_results = analyzer.market_pulse_report_to_stock_analysis(pulse_report)
+
+        # Fetch live quotes for each analyzed ticker
+        analyzed_symbols = list(analysis_results.keys())
+        if analyzed_symbols:
+            logger.info("Fetching live quotes for %d analyzed tickers...", len(analyzed_symbols))
+            ticker_quotes = get_market_context(analyzed_symbols)
+            for sym, data in analysis_results.items():
+                quote = ticker_quotes.get("stocks", {}).get(sym, {})
+                if "error" not in quote:
+                    data["current_price"] = quote.get("current_price", "N/A")
+                    data["percent_change"] = quote.get("percent_change", "N/A")
+
         if pulse_meta.get("market_overview"):
             logger.info("\n%s", pulse_meta["market_overview"])
         phase2_duration = time.time() - start_phase2
@@ -96,12 +108,18 @@ def run_pipeline():
         if buy_opportunities:
             logger.info("\n🎯 TOP BUY OPPORTUNITIES:")
             for i, opp in enumerate(buy_opportunities, 1):
+                price_tag = ""
+                if opp.get("current_price") not in (None, "N/A"):
+                    price_tag = f" | Price: ${opp['current_price']}"
+                    if opp.get("percent_change") not in (None, "N/A"):
+                        price_tag += f" ({opp['percent_change']}%)"
                 logger.info(
-                    "   %d. %s: %s (Score: %s%%)",
+                    "   %d. %s: %s (Score: %s%%%s)",
                     i,
                     opp["symbol"],
                     opp["buy_recommendation"],
                     opp["buy_score"],
+                    price_tag,
                 )
                 logger.info("      %s", opp["buy_rationale"])
 

@@ -196,19 +196,35 @@ class NotificationManager:
             embed = {
                 "title": title,
                 "color": color,
-                "fields": [
-                    {
-                        "name": "Sentiment Score",
-                        "value": _fmt_score(data.get("sentiment_score", "N/A")),
-                        "inline": True
-                    },
-                    {
-                        "name": "Confidence",
-                        "value": f"{data.get('confidence', 'N/A')}%",
-                        "inline": True
-                    }
-                ]
+                "fields": []
             }
+
+            # Add current price if available
+            cur_price = data.get("current_price")
+            pct_change = data.get("percent_change")
+            if cur_price not in (None, "N/A"):
+                price_str = f"${cur_price}"
+                if pct_change not in (None, "N/A"):
+                    arrow = "▲" if float(pct_change) >= 0 else "▼"
+                    price_str += f" ({arrow} {pct_change}%)"
+                embed["fields"].append({
+                    "name": "Current Price",
+                    "value": price_str,
+                    "inline": True
+                })
+
+            embed["fields"].extend([
+                {
+                    "name": "Sentiment Score",
+                    "value": _fmt_score(data.get("sentiment_score", "N/A")),
+                    "inline": True
+                },
+                {
+                    "name": "Confidence",
+                    "value": f"{data.get('confidence', 'N/A')}%",
+                    "inline": True
+                }
+            ])
             
             # Add buy recommendation if available
             if data.get('buy_recommendation'):
@@ -282,7 +298,14 @@ class NotificationManager:
         if bullish:
             for symbol in bullish:
                 sentiment_score = analysis[symbol].get('sentiment_score', 0)
-                message += f"  • <b>{symbol}</b> (Score: {_fmt_score(sentiment_score)})\n"
+                price_info = ""
+                cur_price = analysis[symbol].get('current_price')
+                if cur_price not in (None, 'N/A'):
+                    pct = analysis[symbol].get('percent_change')
+                    price_info = f" | ${cur_price}"
+                    if pct not in (None, 'N/A'):
+                        price_info += f" ({pct}%)"
+                message += f"  • <b>{symbol}</b> (Score: {_fmt_score(sentiment_score)}{price_info})\n"
         else:
             message += "  None\n"
         
@@ -290,7 +313,14 @@ class NotificationManager:
         if bearish:
             for symbol in bearish:
                 sentiment_score = analysis[symbol].get('sentiment_score', 0)
-                message += f"  • <b>{symbol}</b> (Score: {_fmt_score(sentiment_score)})\n"
+                price_info = ""
+                cur_price = analysis[symbol].get('current_price')
+                if cur_price not in (None, 'N/A'):
+                    pct = analysis[symbol].get('percent_change')
+                    price_info = f" | ${cur_price}"
+                    if pct not in (None, 'N/A'):
+                        price_info += f" ({pct}%)"
+                message += f"  • <b>{symbol}</b> (Score: {_fmt_score(sentiment_score)}{price_info})\n"
         else:
             message += "  None\n"
         
@@ -304,7 +334,9 @@ class NotificationManager:
                 rationale = data.get('buy_rationale', '')
                 
                 message += f"\n  🎯 <b>{symbol}</b>\n"
-                message += f"      {recommendation} | Buy Score: {buy_score}%\n"
+                cur_price = data.get('current_price')
+                price_tag = f" | ${cur_price}" if cur_price not in (None, 'N/A') else ""
+                message += f"      {recommendation} | Buy Score: {buy_score}%{price_tag}\n"
                 message += f"      {rationale}\n"
         else:
             message += "  No strong buy opportunities identified.\n"
@@ -317,7 +349,14 @@ class NotificationManager:
             sentiment = data.get('sentiment', 'Unknown')
             emoji = "🚀" if sentiment == "Bullish" else "📉" if sentiment == "Bearish" else "➡️"
             
-            message += f"\n{emoji} <b>{symbol}</b> - {sentiment}\n"
+            cur_price = data.get('current_price')
+            pct_change = data.get('percent_change')
+            price_str = ""
+            if cur_price not in (None, 'N/A'):
+                price_str = f" @ ${cur_price}"
+                if pct_change not in (None, 'N/A'):
+                    price_str += f" ({pct_change}%)"
+            message += f"\n{emoji} <b>{symbol}</b>{price_str} - {sentiment}\n"
             
             if data.get('summary'):
                 message += f"   {data['summary']}\n"
