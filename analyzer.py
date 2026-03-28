@@ -165,6 +165,7 @@ Return ONLY valid JSON (no markdown). Max 3 bullish, 2 bearish, 2 potential_buys
             payload = {
                 "model": self.model,
                 "max_tokens": max_tokens,
+                "temperature": 0.2,
                 "messages": [
                     {"role": "system", "content": system_content},
                     {"role": "user", "content": user_msg},
