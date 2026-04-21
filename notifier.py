@@ -5,7 +5,7 @@ Sends formatted briefings to Discord and Telegram
 import logging
 import aiohttp
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from config import config
@@ -18,6 +18,18 @@ def _fmt_score(value) -> str:
         return f"{float(value):.2f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+def _split_pulse_and_watchlist(analysis: Dict[str, Dict]) -> Tuple[Dict[str, Dict], Dict[str, Dict]]:
+    """Pulse synthesis vs user watchlist (watchlist rows are tagged in analyzer)."""
+    pulse: Dict[str, Dict] = {}
+    watchlist: Dict[str, Dict] = {}
+    for sym, row in analysis.items():
+        if row.get("_from_watchlist"):
+            watchlist[sym] = row
+        else:
+            pulse[sym] = row
+    return pulse, watchlist
 
 
 class NotificationManager:
@@ -140,11 +152,72 @@ class NotificationManager:
             'Hold': 0xFFAA00,         # Orange
             'Sell': 0xFF0000          # Red
         }
+
+        pulse, watchlist = _split_pulse_and_watchlist(analysis)
+
+        def _stock_embed(symbol: str, data: Dict) -> Dict:
+            sentiment = data.get('sentiment', 'Unknown')
+            color = sentiment_colors.get(sentiment, 0x808080)
+            buy_recommendation = data.get('buy_recommendation', 'Hold')
+            if buy_recommendation in ['Strong Buy', 'Buy']:
+                color = recommendation_colors.get(buy_recommendation, 0x00FF00)
+            title = f"{symbol} - {sentiment}"
+            if buy_recommendation.lower() in ['buy', 'strong buy']:
+                title += f" | {buy_recommendation}"
+            embed: Dict = {"title": title, "color": color, "fields": []}
+            cur_price = data.get("current_price")
+            pct_change = data.get("percent_change")
+            if cur_price not in (None, "N/A"):
+                price_str = f"${cur_price}"
+                if pct_change not in (None, "N/A"):
+                    arrow = "▲" if float(pct_change) >= 0 else "▼"
+                    price_str += f" ({arrow} {pct_change}%)"
+                embed["fields"].append({
+                    "name": "Current Price",
+                    "value": price_str,
+                    "inline": True,
+                })
+            embed["fields"].extend([
+                {
+                    "name": "Sentiment Score",
+                    "value": _fmt_score(data.get("sentiment_score", "N/A")),
+                    "inline": True,
+                },
+                {
+                    "name": "Confidence",
+                    "value": f"{data.get('confidence', 'N/A')}%",
+                    "inline": True,
+                },
+            ])
+            if data.get('buy_recommendation'):
+                embed['fields'].append({
+                    "name": "Buy Score",
+                    "value": f"{data.get('buy_score', 0)}%",
+                    "inline": True,
+                })
+                embed['fields'].append({
+                    "name": "Recommendation",
+                    "value": data.get('buy_recommendation', 'Hold'),
+                    "inline": True,
+                })
+                embed['fields'].append({
+                    "name": "Rationale",
+                    "value": data.get('buy_rationale', 'N/A'),
+                    "inline": False,
+                })
+            elif data.get('summary'):
+                embed['fields'].append({
+                    "name": "Investment Thesis",
+                    "value": data['summary'],
+                    "inline": False,
+                })
+            embed['timestamp'] = datetime.now().isoformat()
+            return embed
         
-        # Create summary embed first
-        bullish_list = [s for s, a in analysis.items() if a.get('sentiment') == 'Bullish']
-        bearish_list = [s for s, a in analysis.items() if a.get('sentiment') == 'Bearish']
-        buy_list = [s for s, a in analysis.items() if a.get('buy_recommendation', '').lower() in ['buy', 'strong buy']]
+        # Create summary embed first (headline names from market pulse only)
+        bullish_list = [s for s, a in pulse.items() if a.get('sentiment') == 'Bullish']
+        bearish_list = [s for s, a in pulse.items() if a.get('sentiment') == 'Bearish']
+        buy_list = [s for s, a in pulse.items() if a.get('buy_recommendation', '').lower() in ['buy', 'strong buy']]
         
         overview = ""
         if pulse_meta and pulse_meta.get("market_overview"):
@@ -179,80 +252,21 @@ class NotificationManager:
             summary_embed["description"] = overview
         embeds.append(summary_embed)
         
-        # Create individual stock embeds
-        for symbol, data in analysis.items():
-            sentiment = data.get('sentiment', 'Unknown')
-            color = sentiment_colors.get(sentiment, 0x808080)
-            
-            # Override color for strong buy recommendations
-            buy_recommendation = data.get('buy_recommendation', 'Hold')
-            if buy_recommendation in ['Strong Buy', 'Buy']:
-                color = recommendation_colors.get(buy_recommendation, 0x00FF00)
-            
-            title = f"{symbol} - {sentiment}"
-            if buy_recommendation.lower() in ['buy', 'strong buy']:
-                title += f" | {buy_recommendation}"
-            
-            embed = {
-                "title": title,
-                "color": color,
-                "fields": []
-            }
+        for symbol, data in pulse.items():
+            embeds.append(_stock_embed(symbol, data))
 
-            # Add current price if available
-            cur_price = data.get("current_price")
-            pct_change = data.get("percent_change")
-            if cur_price not in (None, "N/A"):
-                price_str = f"${cur_price}"
-                if pct_change not in (None, "N/A"):
-                    arrow = "▲" if float(pct_change) >= 0 else "▼"
-                    price_str += f" ({arrow} {pct_change}%)"
-                embed["fields"].append({
-                    "name": "Current Price",
-                    "value": price_str,
-                    "inline": True
-                })
-
-            embed["fields"].extend([
-                {
-                    "name": "Sentiment Score",
-                    "value": _fmt_score(data.get("sentiment_score", "N/A")),
-                    "inline": True
-                },
-                {
-                    "name": "Confidence",
-                    "value": f"{data.get('confidence', 'N/A')}%",
-                    "inline": True
-                }
-            ])
-            
-            # Add buy recommendation if available
-            if data.get('buy_recommendation'):
-                embed['fields'].append({
-                    "name": "Buy Score",
-                    "value": f"{data.get('buy_score', 0)}%",
-                    "inline": True
-                })
-                embed['fields'].append({
-                    "name": "Recommendation",
-                    "value": data.get('buy_recommendation', 'Hold'),
-                    "inline": True
-                })
-                embed['fields'].append({
-                    "name": "Rationale",
-                    "value": data.get('buy_rationale', 'N/A'),
-                    "inline": False
-                })
-            elif data.get('summary'):
-                # Only show thesis when there's no buy rationale (which already includes it)
-                embed['fields'].append({
-                    "name": "Investment Thesis",
-                    "value": data['summary'],
-                    "inline": False
-                })
-            
-            embed['timestamp'] = datetime.now().isoformat()
-            embeds.append(embed)
+        if watchlist:
+            embeds.append({
+                "title": "📋 Your watchlist",
+                "description": (
+                    "Here are the tickers on your watch list: "
+                    + ", ".join(f"**{k}**" for k in watchlist.keys())
+                ),
+                "color": 0x5865F2,
+                "timestamp": datetime.now().isoformat(),
+            })
+            for symbol, data in watchlist.items():
+                embeds.append(_stock_embed(symbol, data))
         
         return embeds
     
@@ -271,23 +285,25 @@ class NotificationManager:
         if pulse_meta and pulse_meta.get("themes"):
             message += "<b>Themes</b>: " + ", ".join(str(t) for t in pulse_meta["themes"][:8]) + "\n\n"
         message += f"{briefing}\n\n"
+
+        pulse, watchlist = _split_pulse_and_watchlist(analysis)
         
-        # Bullish stocks section
-        bullish = [s for s, a in analysis.items() if a.get('sentiment') == 'Bullish']
-        bearish = [s for s, a in analysis.items() if a.get('sentiment') == 'Bearish']
+        # Bullish stocks section (market pulse only)
+        bullish = [s for s, a in pulse.items() if a.get('sentiment') == 'Bullish']
+        bearish = [s for s, a in pulse.items() if a.get('sentiment') == 'Bearish']
         buy_recommendations = [
-            (s, a) for s, a in analysis.items()
+            (s, a) for s, a in pulse.items()
             if a.get('buy_recommendation', '').lower() in ['buy', 'strong buy']
         ]
         
         message += "<b>🚀 BULLISH STOCKS</b>\n"
         if bullish:
             for symbol in bullish:
-                sentiment_score = analysis[symbol].get('sentiment_score', 0)
+                sentiment_score = pulse[symbol].get('sentiment_score', 0)
                 price_info = ""
-                cur_price = analysis[symbol].get('current_price')
+                cur_price = pulse[symbol].get('current_price')
                 if cur_price not in (None, 'N/A'):
-                    pct = analysis[symbol].get('percent_change')
+                    pct = pulse[symbol].get('percent_change')
                     price_info = f" | ${cur_price}"
                     if pct not in (None, 'N/A'):
                         price_info += f" ({pct}%)"
@@ -298,11 +314,11 @@ class NotificationManager:
         message += "\n<b>📉 BEARISH STOCKS</b>\n"
         if bearish:
             for symbol in bearish:
-                sentiment_score = analysis[symbol].get('sentiment_score', 0)
+                sentiment_score = pulse[symbol].get('sentiment_score', 0)
                 price_info = ""
-                cur_price = analysis[symbol].get('current_price')
+                cur_price = pulse[symbol].get('current_price')
                 if cur_price not in (None, 'N/A'):
-                    pct = analysis[symbol].get('percent_change')
+                    pct = pulse[symbol].get('percent_change')
                     price_info = f" | ${cur_price}"
                     if pct not in (None, 'N/A'):
                         price_info += f" ({pct}%)"
@@ -326,12 +342,42 @@ class NotificationManager:
                 message += f"      {rationale}\n"
         else:
             message += "  No strong buy opportunities identified.\n"
+
+        if watchlist:
+            message += "\n<b>📋 YOUR WATCHLIST</b>\n"
+            message += "Here are the tickers on your watch list: "
+            message += ", ".join(f"<b>{s}</b>" for s in watchlist.keys())
+            message += "\n"
         
-        # Detailed analysis
+        # Detailed analysis (pulse first, then watchlist)
         message += "\n<b>📋 DETAILED ANALYSIS</b>\n"
         message += "=" * 40 + "\n"
         
-        for symbol, data in analysis.items():
+        for symbol, data in pulse.items():
+            sentiment = data.get('sentiment', 'Unknown')
+            emoji = "🚀" if sentiment == "Bullish" else "📉" if sentiment == "Bearish" else "➡️"
+            
+            cur_price = data.get('current_price')
+            pct_change = data.get('percent_change')
+            price_str = ""
+            if cur_price not in (None, 'N/A'):
+                price_str = f" @ ${cur_price}"
+                if pct_change not in (None, 'N/A'):
+                    price_str += f" ({pct_change}%)"
+            message += f"\n{emoji} <b>{symbol}</b>{price_str} - {sentiment}\n"
+            
+            if data.get('buy_rationale'):
+                message += f"   {data['buy_rationale']}\n"
+                if data.get('buy_score'):
+                    message += f"   💡 Buy Score: {data['buy_score']}%\n"
+            elif data.get('summary'):
+                message += f"   {data['summary']}\n"
+
+        if watchlist:
+            message += "\n" + "─" * 40 + "\n"
+            message += "<b>📋 YOUR WATCHLIST</b>\n"
+        
+        for symbol, data in watchlist.items():
             sentiment = data.get('sentiment', 'Unknown')
             emoji = "🚀" if sentiment == "Bullish" else "📉" if sentiment == "Bearish" else "➡️"
             
@@ -385,11 +431,12 @@ class MessageFormatter:
         """
         Create a concise market briefing from analysis
         """
-        bullish = [s for s, a in analysis.items() if a.get("sentiment") == "Bullish"]
-        bearish = [s for s, a in analysis.items() if a.get("sentiment") == "Bearish"]
+        pulse, watchlist = _split_pulse_and_watchlist(analysis)
+        bullish = [s for s, a in pulse.items() if a.get("sentiment") == "Bullish"]
+        bearish = [s for s, a in pulse.items() if a.get("sentiment") == "Bearish"]
         buys = [
             s
-            for s, a in analysis.items()
+            for s, a in pulse.items()
             if str(a.get("buy_recommendation", "")).lower() in ("buy", "strong buy")
         ]
 
@@ -406,6 +453,13 @@ class MessageFormatter:
             briefing += f"⚠️ **Bearish (from headlines)**: {', '.join(bearish)}\n"
         if buys:
             briefing += f"💡 **Ideas to research**: {', '.join(buys)}\n"
+
+        if watchlist:
+            wl = ", ".join(watchlist.keys())
+            briefing += (
+                f"\n**Your watchlist**\n"
+                f"Here are the tickers on your watch list: {wl}\n"
+            )
 
         briefing += "\n*AI synthesis from live Finnhub + RSS — not financial advice.*"
 

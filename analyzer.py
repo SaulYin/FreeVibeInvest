@@ -686,6 +686,7 @@ Return ONLY valid JSON (no markdown) with exactly this shape:
                     {"catalyst": o["summary"][:240], "impact": "Medium", "timeframe": "short-term"}
                 ]
             
+            o["_from_watchlist"] = True
             out[sym] = o
         
         return out
