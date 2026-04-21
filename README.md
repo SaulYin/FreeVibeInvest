@@ -41,11 +41,60 @@ Set these as **GitHub Secrets** for GitHub Actions, or in a `.env` file for loca
 | `TELEGRAM_BOT_TOKEN` | yes * | Telegram bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | yes * | Chat/channel ID for the bot |
 | `LOG_LEVEL` | no | `INFO` or `DEBUG` (default: `INFO`) |
+| `WATCHLIST_TICKERS` | no | Comma or space-separated stock tickers to analyze (e.g., `AAPL,MSFT,GOOGL` or `AAPL MSFT GOOGL`) |
+| `WATCHLIST_ANALYSIS_ENABLED` | no | Set to `true` to enable watchlist analysis (auto-enabled if `WATCHLIST_TICKERS` is set) |
 
 \* At least one notification channel (Discord **or** Telegram) is required.
 
 **Pipeline settings** (schedule, analysis mode, RSS feeds, token limits) live in
 `pipeline_config.yaml` — no secrets there, safe to commit.
+
+---
+
+### Watchlist Analysis
+
+Analyze a specific set of stocks based on current price and recent news. The pipeline will fetch news for each ticker and ask the LLM for action recommendations.
+
+**Setup:**
+```bash
+# .env — comma or space-separated tickers
+WATCHLIST_TICKERS=AAPL,MSFT,GOOGL,TSLA,NVDA
+
+# Optional: explicitly enable/disable (auto-enabled if WATCHLIST_TICKERS is set)
+WATCHLIST_ANALYSIS_ENABLED=true
+```
+
+**Supported formats:**
+- Comma-separated: `AAPL,MSFT,GOOGL`
+- Space-separated: `AAPL MSFT GOOGL`
+- Mixed: `AAPL, MSFT GOOGL`
+
+**What happens:**
+1. Fetches recent news from Yahoo Finance RSS and Finnhub company news for each ticker
+2. Retrieves current price data and % change
+3. Sends to LLM: "Analyze these stocks based on latest news and prices"
+4. Returns action recommendations for each: **Buy** / **Hold** / **Sell** / **Monitor**
+5. Includes confidence scores (0-100) and rationale
+6. Merges results with market pulse analysis in the briefing
+
+**Example output:**
+```
+📈 WATCHLIST RECOMMENDATIONS
+
+• AAPL: BUY (Confidence: 78%)
+  Recent strength + positive earnings outlook
+  Price: $150.25 (+2.3%)
+
+• MSFT: HOLD (Confidence: 65%)
+  Waiting for cloud revenue confirmation
+  Price: $380.50 (+1.1%)
+```
+
+**Notes:**
+- Watchlist runs *alongside* market pulse (not instead of)
+- If a ticker appears in both, watchlist takes precedence
+- No additional API keys needed (uses existing Finnhub + OpenRouter)
+- Safe to disable anytime by clearing `WATCHLIST_TICKERS`
 
 ---
 

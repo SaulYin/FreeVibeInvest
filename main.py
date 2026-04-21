@@ -101,6 +101,48 @@ def run_pipeline():
             phase2_duration,
         )
 
+        # [OPTIONAL] Analyze watchlist tickers if configured
+        watchlist_analysis = {}
+        if config.WATCHLIST_ANALYSIS_ENABLED and config.WATCHLIST_TICKERS:
+            logger.info("\n[PHASE 2B] Watchlist Analysis...")
+            start_watchlist = time.time()
+            
+            # Fetch news for watchlist tickers
+            watchlist_news: dict = {}
+            for ticker in config.WATCHLIST_TICKERS:
+                # Combine Yahoo Finance and Finnhub company news for each ticker
+                yahoo_news = scraper.scrape_yahoo_finance_per_ticker(ticker, max_items=5)
+                finnhub_news = scraper.scrape_finnhub_company_news(ticker, max_items=5)
+                watchlist_news[ticker] = yahoo_news + finnhub_news
+            
+            # Fetch current quotes for watchlist tickers
+            watchlist_quotes = get_market_context(config.WATCHLIST_TICKERS)
+            watchlist_stock_quotes = watchlist_quotes.get("stocks", {})
+            
+            # Analyze watchlist using LLM
+            watchlist_analysis = analyzer.analyze_watchlist(
+                config.WATCHLIST_TICKERS,
+                watchlist_news,
+                watchlist_stock_quotes
+            )
+            
+            watchlist_duration = time.time() - start_watchlist
+            performance.record_timing("watchlist_analysis", watchlist_duration)
+            
+            if watchlist_analysis:
+                logger.info(
+                    "✓ Watchlist analysis: %d tickers analyzed (%.2fs)",
+                    len(watchlist_analysis),
+                    watchlist_duration,
+                )
+                # Merge watchlist results with main analysis
+                # Watchlist tickers take precedence if they appear in both
+                for sym, analysis_data in watchlist_analysis.items():
+                    analysis_results[sym] = analysis_data
+                logger.info("✓ Merged watchlist analysis into main results (%d total tickers)", len(analysis_results))
+            else:
+                logger.warning("⚠ Watchlist analysis returned no results")
+
         executive_summary = analyzer.generate_executive_summary(analysis_results)
         logger.info("\n%s", executive_summary)
 

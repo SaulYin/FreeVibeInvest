@@ -97,6 +97,31 @@ Return ONLY valid JSON (no markdown). Max 3 bullish, 2 bearish, 2 potential_buys
   "potential_buys": [{"symbol": "TICKER", "thesis": "string", "risk": "string", "conviction": "High|Medium|Low"}]
 }"""
 
+    WATCHLIST_ANALYSIS_SYSTEM = """You are a US equity market analyst reviewing a personal watchlist of stocks. 
+Analyze each stock based on CURRENT PRICE INFORMATION and RECENT NEWS/HEADLINES.
+
+Rules:
+- Provide action recommendations (Buy, Hold, Sell, or Monitor) based on CURRENT price levels and recent news
+- Consider price momentum and technical signals from news context
+- Do not invent facts — use only the information provided about price and news
+- Be decisive but data-driven
+- Max 10 words per thesis/rationale field
+
+Return ONLY valid JSON (no markdown) with exactly this shape:
+{
+  "watchlist_summary": "Brief overall watchlist status (1-2 sentences)",
+  "stocks": [
+    {
+      "symbol": "TICKER",
+      "action": "Buy|Hold|Sell|Monitor",
+      "current_price": "price from data",
+      "thesis": "Why this action (under 10 words)",
+      "confidence": 0-100,
+      "rationale": "Brief explanation (under 20 words)"
+    }
+  ]
+}"""
+
     def __init__(self):
         self.api_key = config.OPENROUTER_API_KEY
         self.api_url = config.OPENROUTER_API_URL
@@ -478,3 +503,189 @@ Return ONLY valid JSON (no markdown). Max 3 bullish, 2 bearish, 2 potential_buys
         buy_opportunities.sort(key=lambda x: x['buy_score'], reverse=True)
         
         return buy_opportunities[:limit]
+
+    def analyze_watchlist(
+        self, 
+        tickers: List[str], 
+        ticker_news: Dict[str, List[Dict]], 
+        ticker_quotes: Dict[str, Dict]
+    ) -> Dict[str, Dict]:
+        """
+        Analyze a watchlist of specific tickers based on current prices and recent news.
+        
+        Args:
+            tickers: List of ticker symbols
+            ticker_news: Dict mapping ticker -> list of news items
+            ticker_quotes: Dict mapping ticker -> price quote data
+        
+        Returns:
+            Dict mapping ticker -> analysis (same format as market_pulse_report_to_stock_analysis)
+        """
+        _EMPTY = {
+            "watchlist_summary": "",
+            "stocks": []
+        }
+        
+        if not tickers:
+            logger.info("No tickers in watchlist")
+            return {}
+        
+        # Build context about each ticker with price and news
+        ticker_context = []
+        for ticker in tickers:
+            quote = ticker_quotes.get(ticker, {})
+            current_price = quote.get("current_price", "N/A")
+            percent_change = quote.get("percent_change", "N/A")
+            
+            # Get recent headlines for this ticker
+            news_items = ticker_news.get(ticker, [])[:5]  # Top 5 headlines
+            news_summary = ""
+            if news_items:
+                news_summary = "\n      News: " + " | ".join(
+                    [f"{n.get('title', '')}" for n in news_items[:3]]
+                )
+            
+            ticker_context.append(
+                f"• {ticker}: ${current_price} ({percent_change}%){news_summary}"
+            )
+        
+        context_block = "\n".join(ticker_context)
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "https://investment-research.local",
+            "X-OpenRouter-Title": "Investment Research Pipeline - Watchlist",
+            "Content-Type": "application/json",
+        }
+        
+        user_msg = (
+            "Analyze my watchlist of stocks based on current prices and recent market news. "
+            "For each stock, provide an action recommendation (Buy/Hold/Sell/Monitor) with rationale.\n\n"
+            f"Watchlist Status:\n{context_block}\n\n"
+            "Based on the current prices and news context, what actions should I take on each stock?"
+        )
+        
+        payload = {
+            "model": self.model,
+            "max_tokens": config.LLM_MAX_TOKENS,
+            "temperature": 0.2,
+            "messages": [
+                {"role": "system", "content": self.WATCHLIST_ANALYSIS_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            "reasoning": {"effort": "low"},
+        }
+        
+        try:
+            logger.info(
+                "Analyzing watchlist: %d tickers (max_tokens=%d)",
+                len(tickers),
+                config.LLM_MAX_TOKENS,
+            )
+            response = requests.post(
+                self.api_url, headers=headers, json=payload, timeout=_llm_http_timeout()
+            )
+            response.raise_for_status()
+            resp_json = response.json()
+            message = resp_json["choices"][0]["message"]
+            text = message.get("content") or ""
+            
+            parsed = _parse_json_object(text)
+            if not parsed or "stocks" not in parsed:
+                logger.warning("Watchlist analysis: could not parse JSON response")
+                return {}
+            
+            logger.info(
+                "Watchlist analysis succeeded: %d stocks analyzed",
+                len(parsed.get("stocks", []))
+            )
+            
+            # Convert watchlist analysis to standard stock analysis format
+            return self._watchlist_report_to_stock_analysis(parsed, ticker_quotes)
+            
+        except requests.exceptions.Timeout as e:
+            logger.error("Watchlist analysis: request timed out — %s", e)
+            return {}
+        except requests.exceptions.HTTPError as e:
+            logger.error("Watchlist analysis HTTP error: %s", e)
+            return {}
+        except Exception as e:
+            logger.error("Watchlist analysis error: %s", e)
+            return {}
+
+    @staticmethod
+    def _watchlist_report_to_stock_analysis(
+        report: Dict[str, Any], 
+        ticker_quotes: Dict[str, Dict]
+    ) -> Dict[str, Dict]:
+        """Convert watchlist analysis report to standard stock analysis format."""
+        out: Dict[str, Dict] = {}
+        
+        def blank(sym: str) -> Dict:
+            return {
+                "symbol": sym,
+                "sentiment": "Neutral",
+                "sentiment_score": 0.0,
+                "buy_recommendation": "Hold",
+                "buy_score": 50,
+                "buy_rationale": "",
+                "catalysts": [],
+                "summary": "",
+                "confidence": 0,
+            }
+        
+        action_to_sentiment = {
+            "buy": ("Bullish", 0.8),
+            "sell": ("Bearish", -0.7),
+            "hold": ("Neutral", 0.0),
+            "monitor": ("Neutral", 0.1),
+        }
+        
+        for stock in report.get("stocks", []):
+            if not isinstance(stock, dict):
+                continue
+            
+            sym = str(stock.get("symbol", "")).upper().strip()
+            if not sym or not re.match(r"^[A-Z][A-Z0-9.]{0,9}$", sym):
+                continue
+            
+            action = str(stock.get("action", "hold")).lower().strip()
+            sentiment, score_mult = action_to_sentiment.get(action, ("Neutral", 0.0))
+            confidence = _parse_confidence(stock.get("confidence"), 65)
+            
+            o = blank(sym)
+            o["sentiment"] = sentiment
+            o["summary"] = str(stock.get("thesis", ""))
+            o["buy_rationale"] = str(stock.get("rationale", ""))
+            o["confidence"] = confidence
+            o["sentiment_score"] = score_mult
+            
+            # Map action to buy recommendation and score
+            if action == "buy":
+                o["buy_recommendation"] = "Buy"
+                o["buy_score"] = 75
+            elif action == "sell":
+                o["buy_recommendation"] = "Sell"
+                o["buy_score"] = 25
+            elif action == "monitor":
+                o["buy_recommendation"] = "Hold"
+                o["buy_score"] = 50
+            else:  # hold
+                o["buy_recommendation"] = "Hold"
+                o["buy_score"] = 50
+            
+            # Add current price from quotes
+            quote = ticker_quotes.get(sym, {})
+            if "error" not in quote:
+                o["current_price"] = quote.get("current_price", "N/A")
+                o["percent_change"] = quote.get("percent_change", "N/A")
+            
+            # Create catalyst from thesis
+            if o["summary"]:
+                o["catalysts"] = [
+                    {"catalyst": o["summary"][:240], "impact": "Medium", "timeframe": "short-term"}
+                ]
+            
+            out[sym] = o
+        
+        return out

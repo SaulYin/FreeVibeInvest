@@ -78,6 +78,8 @@ class Config:
     MP_BENCHMARK_SYMBOLS: List[str] = field(
         default_factory=lambda: ["SPY", "DIA", "QQQ"]
     )
+    WATCHLIST_TICKERS: List[str] = field(default_factory=list)
+    WATCHLIST_ANALYSIS_ENABLED: bool = False
     MP_MOVERS_ENABLED: bool = True
     MP_MOVERS_GAINERS_LIMIT: int = 18
     MP_MOVERS_LOSERS_LIMIT: int = 18
@@ -253,6 +255,18 @@ class Config:
             self.SCHEDULE_TIME = os.getenv("SCHEDULE_TIME", self.SCHEDULE_TIME)
         if os.getenv("SCHEDULE_TIMEZONE"):
             self.SCHEDULE_TIMEZONE = os.getenv("SCHEDULE_TIMEZONE", self.SCHEDULE_TIMEZONE)
+
+        # Parse watchlist tickers from environment variable
+        watchlist_env = os.getenv("WATCHLIST_TICKERS", "").strip()
+        if watchlist_env:
+            # Support comma-separated or space-separated tickers
+            self.WATCHLIST_TICKERS = [
+                t.strip().upper() for t in watchlist_env.replace(",", " ").split() if t.strip()
+            ]
+        self.WATCHLIST_ANALYSIS_ENABLED = _parse_bool(
+            os.getenv("WATCHLIST_ANALYSIS_ENABLED"), 
+            bool(self.WATCHLIST_TICKERS)  # Enable if tickers are provided
+        )
 
         self.LLM_MODEL = _normalize_openrouter_model(self.LLM_MODEL)
 
