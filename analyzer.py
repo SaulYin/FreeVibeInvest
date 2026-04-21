@@ -66,6 +66,40 @@ def _parse_json_object(text: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _normalize_watchlist_payload(parsed: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Normalize common watchlist response shapes to {watchlist_summary, stocks[]}."""
+    if not isinstance(parsed, dict):
+        return None
+
+    summary = str(parsed.get("watchlist_summary") or parsed.get("summary") or "").strip()
+    stocks = parsed.get("stocks")
+
+    if isinstance(stocks, list):
+        return {"watchlist_summary": summary, "stocks": stocks}
+
+    # Common alternates returned by LLMs despite prompt constraints
+    for key in ("watchlist", "recommendations", "positions", "actions"):
+        alt = parsed.get(key)
+        if isinstance(alt, list):
+            return {"watchlist_summary": summary, "stocks": alt}
+
+    # Mapping keyed by ticker -> recommendation object
+    as_rows: List[Dict[str, Any]] = []
+    for key, value in parsed.items():
+        sym = str(key).upper().strip()
+        if not re.match(r"^[A-Z][A-Z0-9.]{0,9}$", sym):
+            continue
+        if not isinstance(value, dict):
+            continue
+        row = dict(value)
+        row.setdefault("symbol", sym)
+        as_rows.append(row)
+
+    if as_rows:
+        return {"watchlist_summary": summary, "stocks": as_rows}
+    return None
+
+
 class SentimentAnalyzer:
     """Analyzes financial news sentiment using OpenRouter chat models"""
     
@@ -576,42 +610,62 @@ Return ONLY valid JSON (no markdown) with exactly this shape:
             "reasoning": {"effort": "low"},
         }
         
-        try:
-            logger.info(
-                "Analyzing watchlist: %d tickers (max_tokens=%d)",
-                len(tickers),
-                config.LLM_MAX_TOKENS,
-            )
-            response = requests.post(
-                self.api_url, headers=headers, json=payload, timeout=_llm_http_timeout()
-            )
-            response.raise_for_status()
-            resp_json = response.json()
-            message = resp_json["choices"][0]["message"]
-            text = message.get("content") or ""
-            
-            parsed = _parse_json_object(text)
-            if not parsed or "stocks" not in parsed:
-                logger.warning("Watchlist analysis: could not parse JSON response")
-                return {}
-            
-            logger.info(
-                "Watchlist analysis succeeded: %d stocks analyzed",
-                len(parsed.get("stocks", []))
-            )
-            
-            # Convert watchlist analysis to standard stock analysis format
-            return self._watchlist_report_to_stock_analysis(parsed, ticker_quotes)
-            
-        except requests.exceptions.Timeout as e:
-            logger.error("Watchlist analysis: request timed out — %s", e)
-            return {}
-        except requests.exceptions.HTTPError as e:
-            logger.error("Watchlist analysis HTTP error: %s", e)
-            return {}
-        except Exception as e:
-            logger.error("Watchlist analysis error: %s", e)
-            return {}
+        _MAX_ATTEMPTS = 2  # initial attempt + 1 retry
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                logger.info(
+                    "Analyzing watchlist attempt %d/%d: %d tickers (max_tokens=%d)",
+                    attempt,
+                    _MAX_ATTEMPTS,
+                    len(tickers),
+                    config.LLM_MAX_TOKENS,
+                )
+                response = requests.post(
+                    self.api_url, headers=headers, json=payload, timeout=_llm_http_timeout()
+                )
+                response.raise_for_status()
+                resp_json = response.json()
+                message = resp_json["choices"][0]["message"]
+                text = message.get("content") or ""
+
+                parsed = _normalize_watchlist_payload(_parse_json_object(text))
+                if not parsed:
+                    logger.warning(
+                        "Watchlist attempt %d: could not parse JSON response. Raw (first 600 chars):\n%s",
+                        attempt,
+                        text[:600],
+                    )
+                    if attempt < _MAX_ATTEMPTS:
+                        continue
+                    return {}
+
+                logger.info(
+                    "Watchlist analysis succeeded: %d stocks analyzed",
+                    len(parsed.get("stocks", []))
+                )
+
+                # Convert watchlist analysis to standard stock analysis format
+                return self._watchlist_report_to_stock_analysis(parsed, ticker_quotes)
+
+            except requests.exceptions.Timeout as e:
+                logger.warning("Watchlist attempt %d timed out — %s", attempt, e)
+                if attempt == _MAX_ATTEMPTS:
+                    return {}
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else 0
+                logger.warning("Watchlist attempt %d HTTP error (%s): %s", attempt, status, e)
+                if status == 429 and attempt < _MAX_ATTEMPTS:
+                    retry_after = int(e.response.headers.get("Retry-After", 30))
+                    time.sleep(min(retry_after, 60))
+                    continue
+                if attempt == _MAX_ATTEMPTS:
+                    return {}
+            except Exception as e:
+                logger.warning("Watchlist attempt %d failed: %s", attempt, e)
+                if attempt == _MAX_ATTEMPTS:
+                    return {}
+
+        return {}
 
     @staticmethod
     def _watchlist_report_to_stock_analysis(
