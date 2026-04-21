@@ -55,6 +55,9 @@ jobs:
           # ── Optional runtime overrides ──
           LLM_MODEL: ${{ vars.LLM_MODEL || 'openrouter/free' }}
           LOG_LEVEL: INFO
+          # Repo variables (Settings → Secrets and variables → Actions → Variables)
+          WATCHLIST_TICKERS: ${{ vars.WATCHLIST_TICKERS }}
+          WATCHLIST_ANALYSIS_ENABLED: ${{ vars.WATCHLIST_ANALYSIS_ENABLED }}
 
       - name: Upload logs on failure
         if: failure()

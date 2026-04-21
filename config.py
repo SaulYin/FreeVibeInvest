@@ -57,7 +57,10 @@ def _load_yaml_defaults() -> Dict[str, Any]:
 def _parse_bool(value: Optional[str], default: bool) -> bool:
     if value is None:
         return default
-    return value.lower() == "true"
+    stripped = value.strip()
+    if not stripped:
+        return default
+    return stripped.lower() == "true"
 
 
 @dataclass
